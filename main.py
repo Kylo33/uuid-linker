@@ -201,6 +201,7 @@ class MyClient(discord.Client):
                     f"> `{channel.name}` has been set as the channel for name change logs.",
                     ephemeral=True,
                 )
+            await channel.send("> :link: This channel is now being used for `UUID Linker` logs.")
 
     async def check_permissions(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.manage_nicknames:
