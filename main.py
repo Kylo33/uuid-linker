@@ -6,6 +6,7 @@ import creds
 import sqlite3
 import time
 
+
 class MyClient(discord.Client):
     def __init__(self, *args, **kwargs):
         intents = discord.Intents.all()
@@ -39,7 +40,7 @@ class MyClient(discord.Client):
                     )
                     .json()
                     .values()
-                    )
+                )
             except json.JSONDecodeError:
                 await interaction.response.send_message(
                     f"> The minecraft username `{minecraft_username}` does not exist.",
@@ -51,7 +52,11 @@ class MyClient(discord.Client):
                 "SELECT * FROM linked_players"
             ).fetchall()
 
-            already_used_uuid = [data for data in full_data if data[0] == guild.id and data[2] == uuid and data[1] != member.id]
+            already_used_uuid = [
+                data
+                for data in full_data
+                if data[0] == guild.id and data[2] == uuid and data[1] != member.id
+            ]
             if len(already_used_uuid) > 0:
                 taken_by = guild.get_member(already_used_uuid[0][1])
                 if taken_by:
@@ -60,9 +65,8 @@ class MyClient(discord.Client):
                         ephemeral=True,
                     )
                     return
-                else: # if they arent in the server anymore delete them from the linked_players and delete custom nick and continue
+                else:  # if they arent in the server anymore delete them from the linked_players and delete custom nick and continue
                     await self.delete_link(guild.id, taken_by)
-
 
             if (guild.id, member.id, uuid) not in full_data:
 
@@ -72,20 +76,28 @@ class MyClient(discord.Client):
                     (guild.id, member.id),
                 )
 
+                if not await self.set_nick(member, minecraft_username):
+                    await interaction.response.send_message(
+                        f"> This bot has insufficient permissions to set `{member}`'s nickname.",
+                        ephemeral=True,
+                    )
+                    return
+
                 self.sqlite_cursor.execute(
                     "INSERT INTO linked_players VALUES (?, ?, ?)",
                     (guild.id, member.id, uuid),
                 )
                 self.sqlite_connection.commit()
 
-                await self.set_nick(member, minecraft_username)
-
                 # sends a message to tell that the account got linked
                 await interaction.response.send_message(
                     f"> Discord user `{member}` **linked** with the Minecraft Account: `{minecraft_username}`",
                     ephemeral=True,
                 )
-                await self.update_log(guild, f"> :lock: `{member}` was linked to minecraft ign `{minecraft_username}` by `{interaction.user}`.")
+                await self.update_log(
+                    guild,
+                    f"> :lock: `{member}` was linked to minecraft ign `{minecraft_username}` by `{interaction.user}`.",
+                )
             else:
                 # sends a message to tell that the account was already linked
                 await interaction.response.send_message(
@@ -111,7 +123,7 @@ class MyClient(discord.Client):
                 )
             else:
                 # deleting custom nicks
-                
+
                 await self.delete_link(guild.id, discord_user.id)
 
                 # resets the nick
@@ -122,7 +134,10 @@ class MyClient(discord.Client):
                     f"> Discord user `{discord_user}` **unlinked**.",
                     ephemeral=True,
                 )
-                await self.update_log(guild, f"> :unlock: `{discord_user}` was unlinked by `{interaction.user}`.")
+                await self.update_log(
+                    guild,
+                    f"> :unlock: `{discord_user}` was unlinked by `{interaction.user}`.",
+                )
 
         @self.tree.command(
             name="customnick",
@@ -142,7 +157,6 @@ class MyClient(discord.Client):
                 )
                 return
 
-
             full_data = self.sqlite_cursor.execute(
                 "SELECT guild_id, member_id FROM linked_players"
             ).fetchall()
@@ -158,20 +172,41 @@ class MyClient(discord.Client):
                 ).fetchone()[0]
                 ign = await self.get_minecraft_username(uuid)
                 # deletes other custom nicks of the same username
-                self.sqlite_cursor.execute("DELETE FROM custom_nicknames WHERE guild_id = ? AND username = ?", (interaction.guild.id, ign))
+                self.sqlite_cursor.execute(
+                    "DELETE FROM custom_nicknames WHERE guild_id = ? AND username = ?",
+                    (interaction.guild.id, ign),
+                )
                 if not custom_nickname:
                     await interaction.response.send_message(
                         f"> `{discord_user}`(`{ign}`)'s custom nickname was **reset**.",
                         ephemeral=True,
+                    )
+                    await self.update_log(
+                        interaction.guild,
+                        f"> :arrows_counterclockwise:`{discord_user}`(`{ign}`)'s custom nickname was reset by `{interaction.user}`.",
+                    )
+
+                    if not await self.set_nick(
+                        interaction.guild.get_member(discord_user.id), ign
+                    ):
+                        await interaction.response.send_message(
+                            f"> This bot has insufficient permissions to set `{discord_user}`'s nickname.",
+                            ephemeral=True,
                         )
-                    await self.update_log(interaction.guild, f"> :arrows_counterclockwise:`{discord_user}`(`{ign}`)'s custom nickname was reset by `{interaction.user}`.")
-                    await self.set_nick(interaction.guild.get_member(discord_user.id), ign)
+                        return
+
                     self.sqlite_connection.commit()
                     return
 
-                await self.set_nick(
+                if not await self.set_nick(
                     interaction.guild.get_member(discord_user.id), custom_nickname
-                )
+                ):
+                    await interaction.response.send_message(
+                        f"> This bot has insufficient permissions to set `{discord_user}`'s nickname.",
+                        ephemeral=True,
+                    )
+                    return
+
                 self.sqlite_cursor.execute(
                     "INSERT INTO custom_nicknames VALUES (?, ?, ?)",
                     (interaction.guild.id, ign, custom_nickname),
@@ -181,27 +216,75 @@ class MyClient(discord.Client):
                     f"> `{discord_user}`(`{ign}`) has been set the custom nickname of `{custom_nickname}`.",
                     ephemeral=True,
                 )
-                await self.update_log(interaction.guild, f"> :memo: `{discord_user}`(`{ign}`) was given custom nickname of `{custom_nickname}` by `{interaction.user}`.")
+                await self.update_log(
+                    interaction.guild,
+                    f"> :memo: `{discord_user}`(`{ign}`) was given custom nickname of `{custom_nickname}` by `{interaction.user}`.",
+                )
 
         @self.tree.command(
             name="channel",
             description="Choose the channel for name change logs.",
         )
-        async def channel(interaction: discord.Interaction, channel: discord.TextChannel):
+        async def channel(
+            interaction: discord.Interaction, channel: discord.TextChannel = None
+        ):
             if not interaction.user.guild_permissions.manage_channels:
                 await interaction.response.send_message(
                     f"> `{interaction.user}` must have the `manage_channels` permission to use this command.",
                     ephemeral=True,
                 )
                 return
-            self.sqlite_cursor.execute("DELETE FROM log_channels WHERE guild_id = ?", (interaction.guild.id,))
-            self.sqlite_cursor.execute("INSERT INTO log_channels VALUES (?, ?)", (interaction.guild.id, channel.id))
-            self.sqlite_connection.commit()
-            await interaction.response.send_message(
-                    f"> `{channel.name}` has been set as the channel for name change logs.",
+            if not channel:
+                if (
+                    len(
+                        self.sqlite_cursor.execute(
+                            "SELECT * FROM log_channels WHERE guild_id = ?",
+                            (interaction.guild.id,),
+                        ).fetchall()
+                    )
+                    == 0
+                ):
+                    await interaction.response.send_message(
+                        f"> You can't delete a log channel where one doesn't exist.",
+                        ephemeral=True,
+                    )
+                else:
+                    self.sqlite_cursor.execute(
+                        "DELETE FROM log_channels WHERE guild_id = ?",
+                        (interaction.guild.id,),
+                    )
+                    self.sqlite_connection.commit()
+                    await interaction.response.send_message(
+                        f"> Log channel has been **removed**.",
+                        ephemeral=True,
+                    )
+                return
+            elif (
+                len(
+                    self.sqlite_cursor.execute(
+                        "SELECT * FROM log_channels WHERE guild_id = ? AND channel_id = ?",
+                        (interaction.guild.id, channel.id),
+                    ).fetchall()
+                )
+                > 0
+            ):
+                await interaction.response.send_message(
+                    f"> `{channel}` is already set as the channel for logs.",
                     ephemeral=True,
                 )
-            await channel.send("> :link: This channel is now being used for `UUID Linker` logs.")
+                return
+            self.sqlite_cursor.execute(
+                "INSERT INTO log_channels VALUES (?, ?)",
+                (interaction.guild.id, channel.id),
+            )
+            self.sqlite_connection.commit()
+            await interaction.response.send_message(
+                f"> `{channel.name}` has been set as the channel for name change logs.",
+                ephemeral=True,
+            )
+            await channel.send(
+                "> :link: This channel is now being used for `UUID Linker` logs."
+            )
 
     async def check_permissions(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.manage_nicknames:
@@ -235,36 +318,51 @@ class MyClient(discord.Client):
         else:
             channel = guild.get_channel(channel_id)
             if not channel:
-                self.sqlite_cursor.execute("DELETE FROM log_channels WHERE guild_id = ?", (guild.id,))
+                self.sqlite_cursor.execute(
+                    "DELETE FROM log_channels WHERE guild_id = ?", (guild.id,)
+                )
                 self.sqlite_connection.commit()
             else:
                 await channel.send(message)
 
     async def get_minecraft_username(self, uuid):
         return requests.get(
-                "https://sessionserver.mojang.com/session/minecraft/profile/" + uuid
-            ).json()["name"]
-    
+            "https://sessionserver.mojang.com/session/minecraft/profile/" + uuid
+        ).json()["name"]
+
     async def delete_link(self, guild_id: int, member_id: int) -> None:
-        full_data = self.sqlite_cursor.execute("SELECT * FROM linked_players").fetchall()
+        full_data = self.sqlite_cursor.execute(
+            "SELECT * FROM linked_players"
+        ).fetchall()
 
         # deleting link
         self.sqlite_cursor.execute(
             "DELETE FROM linked_players WHERE guild_id = ? AND member_id = ?",
             (guild_id, member_id),
-            )
+        )
         # deleting custom nicknames
-        uuid = [data[2] for data in full_data if data[0] == guild_id and data[1] == member_id][0]
+        uuid = [
+            data[2]
+            for data in full_data
+            if data[0] == guild_id and data[1] == member_id
+        ][0]
         ign = await self.get_minecraft_username(uuid)
-        nickname_data = self.sqlite_cursor.execute("DELETE FROM custom_nicknames WHERE guild_id = ? AND username = ?", (guild_id, ign))
+        nickname_data = self.sqlite_cursor.execute(
+            "DELETE FROM custom_nicknames WHERE guild_id = ? AND username = ?",
+            (guild_id, ign),
+        )
 
         self.sqlite_connection.commit()
-        
 
     async def set_nick(self, member, nickname: str):
         if member.name == nickname:
             nickname = nickname[0].swapcase() + nickname[1:]
-        await member.edit(nick=nickname)
+        try:
+            await member.edit(nick=nickname)
+        except discord.errors.Forbidden:
+            return False
+        else:
+            return True
 
     async def on_ready(self):
         await self.tree.sync()
@@ -276,8 +374,8 @@ class MyClient(discord.Client):
     async def update_names(self):
         data = self.sqlite_cursor.execute("SELECT * FROM linked_players").fetchall()
         nickname_data = self.sqlite_cursor.execute(
-                "SELECT * FROM custom_nicknames"
-                ).fetchall()
+            "SELECT * FROM custom_nicknames"
+        ).fetchall()
         for guild_id, member_id, mc_uuid in data:
             guild = self.get_guild(
                 guild_id
@@ -301,17 +399,28 @@ class MyClient(discord.Client):
                 ][0]
             else:
                 if member.name == minecraft_username:
-                    correct_nickname = minecraft_username[0].swapcase() + minecraft_username[1:]
+                    correct_nickname = (
+                        minecraft_username[0].swapcase() + minecraft_username[1:]
+                    )
                 else:
                     correct_nickname = minecraft_username
-            
+
             if not member.nick or (member.nick != correct_nickname):
                 original_nickname = member.nick
-                self.sqlite_cursor.execute("DELETE FROM custom_nicknames WHERE guild_id = ? AND username = ? COLLATE NOCASE", (guild.id, original_nickname))
+                self.sqlite_cursor.execute(
+                    "DELETE FROM custom_nicknames WHERE guild_id = ? AND username = ? COLLATE NOCASE",
+                    (guild.id, original_nickname),
+                )
                 self.sqlite_connection.commit()
-                await self.set_nick(member, correct_nickname)
-                await self.update_log(guild, f"> :arrow_right_hook: `{member}`'s nick was changed from `{original_nickname}` to `{correct_nickname}`.")
-            
+
+                if not await self.set_nick(member, correct_nickname):
+                    return
+
+                await self.update_log(
+                    guild,
+                    f"> :arrow_right_hook: `{member}`'s nick was changed from `{original_nickname}` to `{correct_nickname}`.",
+                )
+
             # sleeps for .3 secs so i dont get rate limited
             time.sleep(0.3)
 
