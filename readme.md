@@ -1,6 +1,5 @@
 # UUID Linker Discord Bot
-## By KyloFPS
-
+## By KyloFPS, help from [@Rexisflying](https://github.com/Rexisflying)
 This project is a discord bot that links players' discord nickname to their current Minecraft IGN, and it updates if they change their IGN.
 
 ![features or something](ss.png)
